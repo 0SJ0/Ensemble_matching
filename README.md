@@ -1,6 +1,6 @@
 # Metamatching
 
-Ce projet "métamatching" a pour objectif d'estimer l'effet causal d'un traitement en se basant sur plusieurs modèles de matchings. La probabilité que l'individu reçoit le traitement est calculée à partir de plusieurs modèles de régressions ( logistiques et régularisés). L'effet causal est calculé en prenant en compte l'aggrégation des modèles utilisées et est calculé sous forme d'intervalle.
+Ce projet "métamatching" a pour objectif d'estimer l'effet causal d'un traitement en se basant sur plusieurs modèles de matchings. La probabilité que l'individu reçoit le traitement peut être calculée à partir de différents modèles de régressions ( logistiques ou régularisés). L'effet causal est calculé en prenant en compte l'aggrégation des modèles utilisées.
 
 Notre vision du matching est basé sur les travaux de Caliendo et Kopeining. Le matching est une méthode statististique d'évaluation d'impact. Cette méthode permet d'évaluer l'effet causal d'un traitement en comparant des individus traités et non-traités ayant des caractéristiques observables similaires.
 
