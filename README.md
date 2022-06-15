@@ -14,4 +14,6 @@ Notre vision du matching est basé sur les travaux de Caliendo et Kopeining. Le 
  
  Une fois les modèles calculés, nous filtrons nos modèles par rapport à la p-value de l'effet causal (ATT) et à R2.
  
- exemple (à rédiger).
+
+Lien du déploiement :
+https://share.streamlit.io/0sj0/metamatching_app/main/Metamatching_app.py
