@@ -2,6 +2,7 @@ library(tidyverse)
 library(MatchIt)
 library(glmnet)
 library(randomForest)
+library(vioplot)
 library("lmtest") #coeftest
 library("sandwich") #vcovCL
 # Ci dessous une fonction qui test plusieurs modèles de matching
@@ -85,11 +86,19 @@ formule_data_matchit<-function(data.frame,traitement,variable_interet){
 }
 
 
-MetamatchingV2<-function(data.frame,traitement,variable_interet,ordre=TRUE,filtre=TRUE){
+MetamatchingV2<-function(data.frame,traitement,variable_interet,ordre=TRUE,filtre=TRUE,sans_random_forest=FALSE,glm=FALSE,print_essai=FALSE){
   print(paste('Le dataset contient',dim(data.frame)[1],'individus.'))
-  liste_caliper<-seq(0.01,0.3,by=0.01)
+  #table(lalonde["treat"])[[2]]
+  nombre_traitement<-table(data.frame[traitement])[[2]]
+  nombre_controle<-table(data.frame[traitement])[[1]]
+  minimum_support_commun<-min(nombre_traitement,nombre_controle)
+  print(paste( nombre_controle,"individus ne sont pas traités."))
+  print(paste( nombre_traitement,"individus sont  traités."))
+  liste_caliper<-seq(0.1,0.3,by=0.025)
   #liste_caliper<-0.05
   liste_distance<-list("glm","lasso", "ridge", "elasticnet","randomforest")
+  if(sans_random_forest){liste_distance<-list("glm","lasso", "ridge", "elasticnet")}
+  if(glm){liste_distance<-list("glm")}
   #liste_distance<-("glm")
   formule_matchit<-formule_data_matchit(data.frame,traitement,variable_interet)
   #print(formule_matchit)
@@ -101,9 +110,10 @@ MetamatchingV2<-function(data.frame,traitement,variable_interet,ordre=TRUE,filtr
   synthese_R2<- c()
   synthese_pvalue<- c()
   synthese_nombre_match<- c()
+  synthese_support_commun<- c()
   for (j in 1:length(liste_distance)) {
     for (i in 1:length(liste_caliper)) {
-      #print(paste("essai :",i,",distance : ",liste_distance[j],",caliper :",liste_caliper[i]))
+      if(print_essai){print(paste("essai :",i,",distance : ",liste_distance[j],",caliper :",liste_caliper[i]))}
       m.out <- matchit(as.formula(formule_matchit) , data = data.frame,caliper=as.numeric(liste_caliper[i]), method = "nearest", distance = toString(liste_distance[j]))
       m.data1 <- match.data(m.out)
       fit1 <- lm(as.formula(formule_lm) , data = m.data1, weights = weights)
@@ -116,6 +126,8 @@ MetamatchingV2<-function(data.frame,traitement,variable_interet,ordre=TRUE,filtr
       p_value_traitement<-result[2,4]
       #print(paste("p_value =",p_value_traitement))
       nombre_match<-(dim(m.data1)[1])/2
+      #print(paste("p_value =",p_value_traitement))
+      support_commun<-round((nombre_match/minimum_support_commun)*100,2)
       #print(" ")
       synthese_distance <- append( synthese_distance,toString(liste_distance[j] ))
       #print(synthese_distance)
@@ -125,6 +137,7 @@ MetamatchingV2<-function(data.frame,traitement,variable_interet,ordre=TRUE,filtr
       synthese_R2 <- append( synthese_R2 ,R2 )
       synthese_pvalue <- append( synthese_pvalue , p_value_traitement )
       synthese_nombre_match<- append( synthese_nombre_match ,  nombre_match)
+      synthese_support_commun<- append( synthese_support_commun ,support_commun )
       
     }
     
@@ -151,18 +164,30 @@ MetamatchingV2<-function(data.frame,traitement,variable_interet,ordre=TRUE,filtr
   #print(synthese_distance)
   #print(synthese_caliper)
   #print(synthese_effet)
-  synthese <- data.frame(synthese_distance, synthese_caliper,synthese_effet,synthese_R2,synthese_pvalue,synthese_nombre_match)
-  colnames(synthese) <- c("distance", "caliper","effet_ATT","R2","p_value","nombre_match")
+  seuil_R2<-0.15
+  synthese <- data.frame(synthese_distance, synthese_caliper,synthese_effet,synthese_R2,synthese_pvalue,synthese_nombre_match,synthese_support_commun)
+  colnames(synthese) <- c("distance", "caliper","effet_ATT","R2","p_value","nombre_match","support_commun")
   if(ordre){synthese<-synthese[order(synthese$p_value),] }
-  print(paste("le métamatching a trouvé",nrow(subset(synthese, p_value<0.05)),"modèles avec une p_value inférieur à 0.05 sur",dim(synthese)[1],"modèles."))
+  print(paste("le métamatching a trouvé",nrow(subset(synthese, p_value<0.05 & R2 <seuil_R2)),"modèles avec une p_value inférieur à 0.05 et un R2 inférieur à 0.15 sur",dim(synthese)[1],"modèles."))
   if(filtre){synthese <- synthese[synthese$p_value<=0.05,]}
-  try(print(paste('ATT moyen :',mean(synthese$effet_ATT))))
-  try(if(sign(mean(synthese$effet_ATT))==1){print("L impact est positif.")})
-  try(if(sign(mean(synthese$effet_ATT))==0){print("L impact est négatif.")})
+  if(filtre){synthese <- synthese[synthese$R2<=seuil_R2,]}
+  if (nrow(subset(synthese, p_value<0.05 & R2 <seuil_R2))!=0) {
+    try(print(paste("L'effet est compris entre",min(synthese$effet_ATT),'(ATT min) et',max(synthese$effet_ATT),'(ATT max).')))
+    try(if(sign(min(synthese$effet_ATT))==1){print("L impact est positif.")})  # Il suffit que la borne inf soit positive 
+    try(if(sign(max(synthese$effet_ATT))==-1){print("L impact est négatif.")}) # Il suffit que la borne sup soit négative 
+  }
+  if (nrow(subset(synthese, p_value<0.05 & R2 <seuil_R2))==0){
+    print("il n'y a pas d'impact.")
+  }
+  if (nrow(subset(synthese, p_value<0.05 & R2 <seuil_R2))>=3){
+    vioplot(synthese$effet_ATT,ylab="Distribution ATT",xlab=traitement)
+  }
   return(synthese)
 }
 
 
-MetamatchingV2(lalonde,"treat","re78")
+a=MetamatchingV2(lalonde,"treat","re78")
 
+a
 
+#https://stackoverflow.com/questions/29672088/speedup-matchit
